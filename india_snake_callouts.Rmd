@@ -1,0 +1,1013 @@
+---
+title: "Snake Rescue Encounter Analysis"
+author: "Sourish Kuttalam"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc_depth: 6
+    theme: readable
+    highlight: espresso
+    toc: yes
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(chron)
+library(padr)
+library(car)
+library(rstatix)
+library(usdm)
+library(pROC)
+library(hms)
+library(lubridate)
+```
+
+# Load the Data
+
+```{r, echo=TRUE, eval=TRUE}
+Masterset <- read.csv("./Cleaned Data_October 2022.csv",
+                      header = TRUE, stringsAsFactors = FALSE)
+```
+
+## Transforming Variables
+
+```{r, echo=TRUE, eval=TRUE}
+Masterset <- mutate(Masterset, Date= as.Date(Date, format= "%d/%m/%Y"))
+Masterset$Time <- chron(times = Masterset$Time)
+Masterset$Species_Name <- as.factor(Masterset$Species_Name)
+Masterset$Site_Type <- as.factor(Masterset$Site_Type)
+Masterset$Age <- as.factor(Masterset$Age)
+
+# Simplify the species_name
+Masterset$Species_Name <- gsub(".*\\((.*?)\\).*", "\\1", Masterset$Species_Name)
+```
+
+# Comparing Years
+
+Here, we test whether there are significant decreases in the number of rescues year-on-year. We also test the changes in proportion of venomous and non-venomous rescues year-on-year.
+
+First, load the Date and Species_Name from the Masterset. Label the rescues as 'venomous' or 'non-venomous'.
+
+```{r, echo=TRUE, eval=TRUE}
+month_encounts = data.frame(Masterset$Date, Masterset$Species_Name)
+names(month_encounts) <- c('dates', 'species')
+# label species type
+month_encounts <- mutate(month_encounts, species_type = case_when(
+  species == "Bungarus fasciatus" ~ "venomous",
+  species == "Bungarus caeruleus" ~ "venomous",
+  species == "Naja kaouthia" ~ "venomous",
+  species == "Naja naja" ~ "venomous",
+  species == "Daboia russelii" ~ "venomous",
+  species == " Argyrogena fasciolatus" ~ "non-venomous",
+  species == "Indotyphlops braminus" ~ "non-venomous",
+  species == "Fowlea piscator" ~ "non-venomous",
+  species == "Dendrelaphis tristis" ~ "non-venomous",
+  species == "Boiga trigonata" ~ "non-venomous",
+  species == "Oligodon arnensis" ~ "non-venomous",
+  species == "Ptyas mucosa" ~ "non-venomous",
+  species == "Eryx conicus" ~ "non-venomous",
+  species == "Ahaetulla nasuta" ~ "non-venomous",
+  species == "Lycodon aulicus" ~ "non-venomous",
+  species == "Typhlops diardii" ~ "non-venomous",
+  species == "Denrelaphis proarchos" ~ "non-venomous",
+  species == "Eryx Johnii" ~ "non-venomous",
+  species == "Enhydris enhydris" ~ "non-venomous",
+  species == "Amphiesma stolatum" ~ "non-venomous",
+  species == "Lycodon jara" ~ "non-venomous"))
+```
+
+Create a month and year column. 
+
+```{r, echo=TRUE, eval=TRUE}
+month_encounts$month =  format(month_encounts$dates, format = "%B")
+month_encounts$year = format(month_encounts$dates, format = "%Y")
+```
+
+Get the summary of the rescue counts. 
+
+```{r, echo=TRUE, eval=TRUE}
+summary_month_encounts <- month_encounts %>% 
+  count(species_type, month, year, sort = TRUE)
+
+# There are rows with missing combinations (e.g. non-venomous-- August-- 2022 = n = 0)
+summary_month_encounts <- summary_month_encounts %>% 
+  add_row(species_type = "non-venomous", month = "August", year = "2022",
+          n = 0)
+summary_month_encounts <- summary_month_encounts %>% 
+  add_row(species_type = "non-venomous", month = "January", year = "2021", 
+          n = 0)
+summary_month_encounts <- summary_month_encounts %>% 
+  add_row(species_type = "non-venomous", month = "July", year = "2022", 
+          n = 0)
+
+## Add total number of rescue in each month in each year (venom + non-venom)
+summary_month_encounts <- summary_month_encounts %>%
+  group_by(month, year) %>%
+  summarise(n = sum(n)) %>%
+  mutate(species_type = "All Snakes") %>%
+  bind_rows(summary_month_encounts) %>%
+  arrange(month, year)
+
+```
+
+## Compare 2020 vs 2021 (July to December)
+
+```{r, echo=TRUE, eval=TRUE}
+summary_month_encounts %>% 
+  group_by(species_type, 
+           year = case_when(year == "2020" ~ "2020", year == "2021" ~ "2021"), 
+           month = case_when(month == "July" ~ "July", 
+                             month == "August" ~ "August", 
+                             month == "September" ~ "September", 
+                             month == "October" ~ "October", 
+                             month == "November" ~ "November",
+                             month == "December" ~ "December")) %>%
+  summarise(n = sum(n)) %>% na.omit() %>% group_by(species_type, year) %>% 
+  summarise(n=sum(n))
+```
+
+```{r, echo=TRUE, eval=TRUE}
+# Chi-Squared test for venom vs non-venom
+chisq.test(matrix(c(61,38,140,104), ncol = 2, byrow = TRUE), correct = F)
+
+# Chi-Squared test for given probabilities for all snakes
+obs <- c(201,142)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+```
+
+## Compare 2021 vs 2022 (January to October)
+
+```{r, echo=TRUE, eval=TRUE}
+summary_month_encounts %>% 
+  group_by(species_type, 
+           year = case_when(year == "2021" ~ "2021", year == "2022" ~ "2022"), 
+           month = case_when(month == "January" ~ "January", 
+                             month == "February" ~ "February", 
+                             month == "March" ~ "March", 
+                             month == "April" ~ "April", 
+                             month == "May" ~ "May", 
+                             month == "June" ~ "June", 
+                             month == "July" ~ "July", 
+                             month == "August" ~ "August", 
+                             month == "September" ~ "September", 
+                             month == "October" ~ "October")) %>%
+  summarise(n = sum(n)) %>% na.omit() %>% group_by(species_type, year) %>% 
+  summarise(n=sum(n))
+```
+
+```{r, echo=TRUE, eval=TRUE}
+# Chi-Squared test for venom vs non-venom
+chisq.test(matrix(c(52,114,30,84), ncol = 2, byrow = TRUE), correct = F)
+
+# Chi-Squared test for given probabilities for all snakes
+obs <- c(166,114)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+```
+
+# Site Use Comparison
+ 
+## Individual Sites
+We first compare the association between the species type (venomous and non-venomous) and the each of the individual sites. 
+
+```{r, echo=TRUE, eval=TRUE}
+VenomvsNonVenom = data.frame(Masterset$Species_Name, Masterset$Site_Type)
+#Change column names
+names(VenomvsNonVenom) <- c('Species', 'Site')
+# Check for rows where there may be blank cells
+which(VenomvsNonVenom$Site == "")
+which(VenomvsNonVenom$Species == "")
+
+# Remove the rows with blank cells
+VenomvsNonVenom <- VenomvsNonVenom[!VenomvsNonVenom$Site=="",]
+```
+
+Add column for snake type ( 1 = venomous, 0 = non-venomous)
+
+```{r, echo=TRUE, eval=TRUE}
+VenomvsNonVenom <- mutate(VenomvsNonVenom, SnakeType = case_when(
+  Species == "Bungarus fasciatus" ~ "1",
+  Species == "Bungarus caeruleus" ~ "1",
+  Species == "Naja kaouthia" ~ "1",
+  Species == "Naja naja" ~ "1",
+  Species == "Daboia russelii" ~ "1",
+  Species == " Argyrogena fasciolatus" ~ "0",
+  Species == "Indotyphlops braminus" ~ "0",
+  Species == "Fowlea piscator" ~ "0",
+  Species == "Dendrelaphis tristis" ~ "0",
+  Species == "Boiga trigonata" ~ "0",
+  Species == "Oligodon arnensis" ~ "0",
+  Species == "Ptyas mucosa" ~ "0",
+  Species == "Eryx conicus" ~ "0",
+  Species == "Ahaetulla nasuta" ~ "0",
+  Species == "Lycodon aulicus" ~ "0",
+  Species == "Typhlops diardii" ~ "0",
+  Species == "Denrelaphis proarchos" ~ "0",
+  Species == "Eryx Johnii" ~ "0",
+  Species == "Enhydris enhydris" ~ "0",
+  Species == "Amphiesma stolatum" ~ "0",
+  Species == "Lycodon jara" ~ "0"))
+
+```
+
+Check whether there are any sites with low rescue counts
+
+```{r, echo=TRUE, eval=TRUE}
+VenomvsNonVenom %>% count(Site, SnakeType, sort = TRUE)
+```
+
+Combine the following sites which have low counts and are very similar niches: 
+
+-   Well + Pond + Fishing Net + Fishing Traps + Canal = Water Body
+-   Rice Field + Groundnut Field + Fodder Field + Bamboo Orchard = Agricultural Field
+-   Bird Cage + Chicken/ Duck Pen + Poultry Farm = Bird Enclosure
+
+```{r, echo=TRUE, eval=TRUE}
+VenomvsNonVenom <- VenomvsNonVenom %>%
+  mutate(Site = case_when(
+    Site %in% c('Well', 'Pond', 'Fishing Net', 'Fishing Traps', 'Canal') ~ 'Water Body',
+    Site %in% c('Rice Field', 'Groundnut Field', 'Fodder Field', 'Bamboo Orchard') ~ 'Agricultural Field',
+    Site %in% c('Bird Cage', 'Chicken/ Duck Pen', 'Poultry Farm') ~ 'Bird Enclosure',
+    TRUE ~ Site
+  ))
+```
+
+Run Chi-Squared Tests at each Site
+
+```{r, echo=TRUE, eval=TRUE}
+site_counts <- VenomvsNonVenom %>% count(Site, SnakeType, sort = FALSE)
+```
+
+```{r, echo=TRUE, eval=TRUE}
+#Agricultural Field: 
+obs <- c(4,9)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Backyard: 
+obs <- c(41,133)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Bathroom
+obs <- c(6,21)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Bedroom
+obs <- c(30,36)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Bird Enclosure
+obs <- c(4,5)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Courtyard
+obs <- c(4,12)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Cow shed
+obs <- c(3,8)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Kitchen
+obs <- c(11,35)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Shop
+obs <- c(5,10)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Store Room
+obs <- c(36,64)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+
+#Water Body
+obs <- c(9,31)
+exp <- c(0.5,0.5)
+chisq.test(obs, p=exp)
+```
+
+## Outside vs Inside Sites
+
+Here, we group the sites as outside or inside and then run a chi-squared test. 
+
+```{r, echo=TRUE, eval=TRUE}
+OutvsIn = data.frame(Masterset$Species_Name, Masterset$Site_Type)
+names(OutvsIn) <- c('Species', 'Site')
+
+# Eliminating Blank Data
+OutvsIn <- OutvsIn[!OutvsIn$Site=="",]
+
+
+# Labeling Venom or Non-Venom
+OutvsIn <- mutate(OutvsIn, SnakeType = case_when(
+  Species == "Bungarus fasciatus" ~ "1",
+  Species == "Bungarus caeruleus" ~ "1",
+  Species == "Naja kaouthia" ~ "1",
+  Species == "Naja naja" ~ "1",
+  Species == "Daboia russelii" ~ "1",
+  Species == " Argyrogena fasciolatus" ~ "0",
+  Species == "Indotyphlops braminus" ~ "0",
+  Species == "Fowlea piscator" ~ "0",
+  Species == "Dendrelaphis tristis" ~ "0",
+  Species == "Boiga trigonata" ~ "0",
+  Species == "Oligodon arnensis" ~ "0",
+  Species == "Ptyas mucosa" ~ "0",
+  Species == "Eryx conicus" ~ "0",
+  Species == "Ahaetulla nasuta" ~ "0",
+  Species == "Lycodon aulicus" ~ "0",
+  Species == "Typhlops diardii" ~ "0",
+  Species == "Denrelaphis proarchos" ~ "0",
+  Species == "Eryx Johnii" ~ "0",
+  Species == "Enhydris enhydris" ~ "0",
+  Species == "Amphiesma stolatum" ~ "0",
+  Species == "Lycodon jara" ~ "0"))
+
+# Inside or Outside
+OutvsIn <- mutate(OutvsIn, Location = case_when(
+  Site == "Backyard/ Front Garden" ~ "Outside",
+  Site == "Bamboo Orchard" ~ "Outside",
+  Site == "Bathroom" ~ "Inside",
+  Site == "Bedroom" ~ "Inside",
+  Site == "Bird Cage" ~ "Inside",
+  Site == "Canal" ~ "Outside",
+  Site == "Chicken/ Duck Pen" ~ "Inside",
+  Site == "Courtyard" ~ "Inside",
+  Site == "Cow Shed" ~ "Outside",
+  Site == "Fishing Net" ~ "Outside",
+  Site == "Fishing Traps" ~ "Outside",
+  Site == "Fodder Field" ~ "Outside",
+  Site == "Groundnut Field" ~ "Outside",
+  Site == "Kitchen" ~ "Inside",
+  Site == "Pond" ~ "Outside",
+  Site == "Poultry Farm" ~ "Inside",
+  Site == "Rice Field" ~ "Outside",
+  Site == "Shop" ~ "Inside",
+  Site == "Store Room" ~ "Inside",
+  Site == "Well" ~ "Outside"))
+
+```
+
+Run the Chi-Squared Test
+
+```{r, echo=TRUE, eval=TRUE}
+
+# Create the table on which the chi-squared will be run
+table(OutvsIn$SnakeType, OutvsIn$Location)
+
+# chi squared test
+chisq.test(table(OutvsIn$SnakeType, OutvsIn$Location), correct = FALSE)
+
+```
+
+# Loading Climate Data
+
+Load the data from the csv file named "IMD_data.csv". 
+
+```{r, echo=TRUE, eval=TRUE}
+climate_data <- read.csv("./IMD_data.csv", header = TRUE, 
+                         stringsAsFactors = FALSE)
+# change the date format in the climate_data
+climate_data <- mutate(climate_data, Date = 
+                         as.Date(Date, format = "%d/%m/%Y"))
+climate_data <- mutate(climate_data, Date = 
+                         as.Date(Date, format = "%Y-%m-%d"))
+#change the name to match the encounter column name
+names(climate_data) <- c('dates', 'max_temp', 'min_temp', 'rain')
+#add missing dates 
+climate_data <- pad(climate_data)
+```
+
+Create single dataframe for each variable. 
+
+```{r, echo=TRUE, eval=TRUE}
+
+# maxtemp
+maxtemp = data.frame(climate_data$dates, climate_data$max_temp)
+names(maxtemp) <- c('dates', 'maxtemp')
+# min temp
+mintemp = data.frame(climate_data$dates, climate_data$min_temp)
+names(mintemp) <- c('dates', 'mintemp')
+# rain
+rain = data.frame(climate_data$dates, climate_data$rain)
+names(rain) <- c('dates', 'rain')
+```
+
+# Effect Of Rain
+
+## Effect on Location and Species Type
+
+```{r, echo=TRUE, eval=TRUE}
+rain_sites = data.frame(Masterset$Date, Masterset$Species_Name, Masterset$Site_Type)
+names(rain_sites) <- c('dates', 'species', 'site')
+
+rain_sites <- mutate(rain_sites, species_type = case_when(
+  species == "Bungarus fasciatus" ~ "venomous",
+  species == "Bungarus caeruleus" ~ "venomous",
+  species == "Naja kaouthia" ~ "venomous",
+  species == "Naja naja" ~ "venomous",
+  species == "Daboia russelii" ~ "venomous",
+  species == " Argyrogena fasciolatus" ~ "non-venomous",
+  species == "Indotyphlops braminus" ~ "non-venomous",
+  species == "Fowlea piscator" ~ "non-venomous",
+  species == "Dendrelaphis tristis" ~ "non-venomous",
+  species == "Boiga trigonata" ~ "non-venomous",
+  species == "Oligodon arnensis" ~ "non-venomous",
+  species == "Ptyas mucosa" ~ "non-venomous",
+  species == "Eryx conicus" ~ "non-venomous",
+  species == "Ahaetulla nasuta" ~ "non-venomous",
+  species == "Lycodon aulicus" ~ "non-venomous",
+  species == "Typhlops diardii" ~ "non-venomous",
+  species == "Denrelaphis proarchos" ~ "non-venomous",
+  species == "Eryx Johnii" ~ "non-venomous",
+  species == "Enhydris enhydris" ~ "non-venomous",
+  species == "Amphiesma stolatum" ~ "non-venomous",
+  species == "Lycodon jara" ~ "non-venomous"))
+
+rain_sites <- mutate(rain_sites, site_type = case_when(
+  site == "Backyard/ Front Garden" ~ "Outside",
+  site == "Bamboo Orchard" ~ "Outside",
+  site == "Bathroom" ~ "Inside",
+  site == "Bedroom" ~ "Inside",
+  site == "Bird Cage" ~ "Inside",
+  site == "Canal" ~ "Outside",
+  site == "Chicken/ Duck Pen" ~ "Inside",
+  site == "Courtyard" ~ "Inside",
+  site == "Cow Shed" ~ "Outside",
+  site == "Fishing Net" ~ "Outside",
+  site == "Fishing Traps" ~ "Outside",
+  site == "Fodder Field" ~ "Outside",
+  site == "Groundnut Field" ~ "Outside",
+  site == "Kitchen" ~ "Inside",
+  site == "Pond" ~ "Outside",
+  site == "Poultry Farm" ~ "Inside",
+  site == "Rice Field" ~ "Outside",
+  site == "Shop" ~ "Inside",
+  site == "Store Room" ~ "Inside",
+  site == "Well" ~ "Outside"))
+```
+
+Add the rain data. 
+
+```{r, echo=TRUE, eval=TRUE}
+rain_sites <- merge(rain_sites, rain, by = "dates")
+#remove rows with NA's 
+rain_sites <- na.omit(rain_sites)
+
+rain_sites <- rain_sites[, !names(rain_sites) %in% c("species", "site")]
+
+# label dry days and rainy days
+rain_sites <- rain_sites %>% mutate(day_type = case_when(rain == 0 ~ "Dry", 
+                                             rain > 0 ~ "Rain"))
+rain_sites$day_type <- as.factor(rain_sites$day_type)
+
+
+rain_sites %>% count(species_type, site_type, day_type)
+```
+
+Run the Chi-Squared Tests. 
+
+```{r, echo=TRUE, eval=TRUE}
+# venomous
+chisq.test(as.table(rbind(c(130,123), c(43,44))), correct = FALSE)
+
+#non-venomous 
+chisq.test(as.table(rbind(c(70,41), c(19,14))), correct = FALSE)
+```
+
+## Effect of Day Type Combinations
+
+```{r, echo=TRUE, eval=TRUE}
+daytype = data.frame(Masterset$Date, Masterset$Species_Name)
+names(daytype) <- c('dates' , 'species')
+#add dates with no rescues
+daytype <- pad(daytype)
+# change species to character to allow NA replacement
+daytype$species <- as.character(daytype$species)
+# change NA to 0 first
+daytype <- daytype %>% mutate(species = ifelse(is.na(species), 0, species))
+# change back to factor
+daytype$species <- as.factor(daytype$species)
+#label days with enocunters as "yes or no"
+daytype <- mutate(daytype, snake_encounter = ifelse(species == "0", "no", "yes"))
+# insert rain and previous rain data to each day
+daytype <- merge(daytype, rain, by = "dates")
+daytype$rain_prev[2:nrow(daytype)] <- daytype$rain[1:nrow(daytype) - 1]
+
+daytype <- daytype %>% mutate(prevday_type = case_when(rain_prev == 0 ~ "Dry", 
+                                                                   rain_prev > 0 ~ "Rain"))
+daytype$prevday_type <- as.factor(daytype$prevday_type)
+
+daytype <- daytype %>% mutate(sameday_type = case_when(rain == 0 ~ "Dry", 
+                                                                   rain > 0 ~ "Rain"))
+daytype$sameday_type <- as.factor(daytype$sameday_type)
+
+#create prev:same day column 
+daytype$day_diff = daytype$prevday_type:daytype$sameday_type
+daytype$day_diff <- as.factor(daytype$day_diff)
+# remove multiple day rows
+daytype <- daytype[!duplicated(daytype[c('dates')]),]
+```
+
+```{r, echo=TRUE, eval=TRUE}
+table( daytype$day_diff, daytype$snake_encounter)
+```
+
+Run the chi-squared tests for each of combination of day_diff. 
+
+```{r, echo=TRUE, eval=TRUE}
+# Dry:Dry vs Dry:Rain
+prev_day_compare <- matrix(c(293,183,56,23), ncol=2, byrow = TRUE)
+chisq.test(prev_day_compare, correct = F)
+
+# Dry:Dry vs Rain:Dry
+prev_day_compare <- matrix(c(293,183,44,36), ncol=2, byrow = TRUE)
+chisq.test(prev_day_compare, correct = F)
+
+# Dry:Dry vs Rain:Rain
+prev_day_compare <- matrix(c(293, 183,57,48), ncol=2, byrow = TRUE)
+chisq.test(prev_day_compare, correct = F)
+
+# Dry:Rain vs Rain:Dry
+prev_day_compare <- matrix(c(56,23,44,36), ncol=2, byrow = TRUE)
+chisq.test(prev_day_compare, correct = F)
+
+# Dry:Rain vs Rain:Rain
+prev_day_compare <- matrix(c(56,23,57,48), ncol=2, byrow = TRUE)
+chisq.test(prev_day_compare, correct = F)
+
+#Rain:Dry vs Rain:Rain
+prev_day_compare <- matrix(c(44,36,57,48), ncol=2, byrow = TRUE)
+chisq.test(prev_day_compare, correct = F)
+```
+
+We will also test to see whether there is an association between the daytype combination and the locations of the rescue.
+
+```{r, echo=TRUE, eval=TRUE}
+daytype_location = data.frame(Masterset$Date, Masterset$Site_Type)
+names(daytype_location) <- c('dates', 'site')
+daytype_location <- mutate(daytype_location, site_type = case_when(
+  site == "Backyard/ Front Garden" ~ "Outside",
+  site == "Bamboo Orchard" ~ "Outside",
+  site == "Bathroom" ~ "Inside",
+  site == "Bedroom" ~ "Inside",
+  site == "Bird Cage" ~ "Inside",
+  site == "Canal" ~ "Outside",
+  site == "Chicken/ Duck Pen" ~ "Inside",
+  site == "Courtyard" ~ "Inside",
+  site == "Cow Shed" ~ "Outside",
+  site == "Fishing Net" ~ "Outside",
+  site == "Fishing Traps" ~ "Outside",
+  site == "Fodder Field" ~ "Outside",
+  site == "Groundnut Field" ~ "Outside",
+  site == "Kitchen" ~ "Inside",
+  site == "Pond" ~ "Outside",
+  site == "Poultry Farm" ~ "Inside",
+  site == "Rice Field" ~ "Outside",
+  site == "Shop" ~ "Inside",
+  site == "Store Room" ~ "Inside",
+  site == "Well" ~ "Outside"))
+daytype_location <- pad(daytype_location)
+
+daytype_location <- merge(daytype_location, rain, by = "dates")
+daytype_location$rain_prev[2:nrow(daytype_location)] <- daytype_location$rain[1:nrow(daytype_location) - 1]
+
+daytype_location <- daytype_location %>% mutate(prevday_type = case_when(rain_prev == 0 ~ "Dry", 
+                                                                   rain_prev > 0 ~ "Rain"))
+daytype_location$prevday_type <- as.factor(daytype_location$prevday_type)
+
+daytype_location <- daytype_location %>% mutate(sameday_type = case_when(rain == 0 ~ "Dry", 
+                                                                   rain > 0 ~ "Rain"))
+daytype_location$sameday_type <- as.factor(daytype_location$sameday_type)
+
+#create prev:same day column 
+daytype_location$day_diff = daytype_location$prevday_type:daytype_location$sameday_type
+daytype_location$day_diff <- as.factor(daytype_location$day_diff)
+
+daytype_location <- na.omit(daytype_location)
+```
+
+```{r, echo=TRUE, eval=TRUE}
+table(daytype_location$site_type, daytype_location$day_diff)
+# Running the chi-squared test
+chisq.test(table(daytype_location$site_type, daytype_location$day_diff))
+```
+
+# Most Rescued Species
+
+## Comparing Climate Effects
+
+### Rain
+
+```{r, echo=TRUE, eval=TRUE}
+rain_select= data.frame(Masterset$Date, Masterset$Species_Name)
+names(rain_select) <-  c('dates', 'species')
+rain_select <- rain_select[rain_select$species %in% c( "Fowlea piscator" , "Dendrelaphis tristis" ,
+                                                             "Ptyas mucosa", "Lycodon aulicus", 
+                                                             "Bungarus fasciatus", "Bungarus caeruleus",
+                                                             "Naja kaouthia", "Naja naja","Daboia russelii" ), ]
+rain_select <- merge(rain_select, rain, by = "dates")
+#remove rows with NA's 
+rain_select <- na.omit(rain_select)
+#remove the date column
+rain_select <- rain_select[, !names(rain_select) %in% c("dates")]
+```
+
+Check the assumptions for a one-way ANOVA.
+
+```{r, echo=TRUE, eval=TRUE}
+### create the model
+model_rain <- aov(rain~species, data = rain_select)
+### normality
+shapiro.test(residuals(model_rain))
+### homogeneity of variance
+leveneTest(model_rain)
+### independence
+durbinWatsonTest(model_rain)
+```
+Assumptions have been violated. 
+```{r, echo=TRUE, eval=TRUE}
+# Run a Kruskal Wallis Test
+kruskal_test(rain~species, data = rain_select)
+```
+
+### Minimum Temperature
+
+```{r, echo=TRUE, eval=TRUE}
+mintemp_select= data.frame(Masterset$Date, Masterset$Species_Name)
+names(mintemp_select) <-  c('dates', 'species')
+mintemp_select <- mintemp_select[mintemp_select$species %in% c( "Fowlea piscator" , "Dendrelaphis tristis" ,
+                                                             "Ptyas mucosa", "Lycodon aulicus", 
+                                                             "Bungarus fasciatus", "Bungarus caeruleus",
+                                                             "Naja kaouthia", "Naja naja","Daboia russelii" ), ]
+mintemp_select <- merge(mintemp_select, mintemp, by = "dates")
+#remove rows with NA's 
+mintemp_select <- na.omit(mintemp_select)
+#remove the date column
+mintemp_select <- mintemp_select[, !names(mintemp_select) %in% c("dates")]
+```
+
+Check the assumptions for a one-way ANOVA.
+
+```{r, echo=TRUE, eval=TRUE}
+### create the model
+model_mintemp <- aov(mintemp~species, data = mintemp_select)
+### normality
+shapiro.test(residuals(model_mintemp))
+### homogeneity of variance
+leveneTest(model_mintemp)
+### independence
+durbinWatsonTest(model_mintemp)
+```
+
+Assumptions have been violated. 
+
+```{r, echo=TRUE, eval=TRUE}
+# Run a Kruskal Wallis Test
+kruskal_test(mintemp~species, data = mintemp_select)
+
+# post-hoc test
+pwc_mintemp <- dunn_test(mintemp~species, data = mintemp_select)
+print(pwc_mintemp, n=36)
+```
+
+### Maximum Temperature
+
+```{r, echo=TRUE, eval=TRUE}
+maxtemp_select= data.frame(Masterset$Date, Masterset$Species_Name)
+names(maxtemp_select) <-  c('dates', 'species')
+maxtemp_select <- maxtemp_select[maxtemp_select$species %in% c( "Fowlea piscator" , "Dendrelaphis tristis" ,
+                                                             "Ptyas mucosa", "Lycodon aulicus", 
+                                                             "Bungarus fasciatus", "Bungarus caeruleus",
+                                                             "Naja kaouthia", "Naja naja","Daboia russelii" ), ]
+maxtemp_select <- merge(maxtemp_select, maxtemp, by = "dates")
+#remove rows with NA's 
+maxtemp_select <- na.omit(maxtemp_select)
+#remove the date column
+maxtemp_select <- maxtemp_select[, !names(maxtemp_select) %in% c("dates")]
+```
+
+Check the assumptions for a one-way ANOVA.
+
+```{r, echo=TRUE, eval=TRUE}
+### create the model
+model_maxtemp <- aov(maxtemp~species, data = maxtemp_select)
+### normality
+shapiro.test(residuals(model_maxtemp))
+### homogeneity of variance
+leveneTest(model_maxtemp)
+### independence
+durbinWatsonTest(model_maxtemp)
+```
+
+Assumptions have been violated. 
+
+```{r, echo=TRUE, eval=TRUE}
+# Run a Kruskal Wallis Test
+kruskal_test(maxtemp~species, data = maxtemp_select)
+```
+
+### Temperature Range
+
+```{r, echo=TRUE, eval=TRUE}
+temprange_select= data.frame(Masterset$Date, Masterset$Species_Name)
+names(temprange_select) <-  c('dates', 'species')
+temprange_select <- temprange_select[temprange_select$species %in% c( "Fowlea piscator" , "Dendrelaphis tristis" ,
+                                                             "Ptyas mucosa", "Lycodon aulicus", 
+                                                             "Bungarus fasciatus", "Bungarus caeruleus",
+                                                             "Naja kaouthia", "Naja naja","Daboia russelii" ), ]
+```
+
+First, create the temperature range dataframe. 
+
+```{r, echo=TRUE, eval=TRUE}
+# Creating temprange
+temprange <- merge(mintemp, maxtemp, by = "dates")
+temprange$temprange <- temprange$maxtemp - temprange$mintemp
+temprange <- temprange[, !names(temprange) %in% c("mintemp", "maxtemp")]
+temprange_select <- merge(temprange_select, temprange, by = "dates")
+#remove rows with NA's 
+temprange_select <- na.omit(temprange_select)
+#remove the date column
+temprange_select <- temprange_select[, !names(temprange_select) %in% c("dates")]
+```
+
+Check the assumptions for a one-way ANOVA.
+
+```{r, echo=TRUE, eval=TRUE}
+### create the model
+model_temprange <- aov(temprange~species, data = temprange_select)
+### normality
+shapiro.test(residuals(model_temprange))
+### homogeneity of variance
+leveneTest(model_temprange)
+### independence
+durbinWatsonTest(model_temprange)
+```
+
+Assumptions have not been violated. 
+
+```{r, echo=TRUE, eval=TRUE}
+# Run a Kruskal Wallis Test
+anova_test(temprange~species, data = temprange_select)
+pwc_temprange <- temprange_select %>% tukey_hsd(temprange ~ species)
+print(pwc_temprange, n=36, width = Inf)
+
+```
+
+## Binary Logistic Regression Models
+
+``` {r, echo=TRUE, eval=TRUE}
+# make climate data
+climate_data <- rain
+climate_data$rain_prev <- c(NA, climate_data$rain[-nrow(climate_data)])  
+climate_data <- merge(climate_data, mintemp, by = "dates")
+climate_data <- merge(climate_data, maxtemp, by = "dates")
+climate_data <- pad(climate_data)
+```
+
+Test whether the climate variables are collinear. 
+
+``` {r, echo=TRUE, eval=TRUE}
+# Correlation Matrix
+climate_correlation <- climate_data[, c("rain", "rain_prev", 
+                                        "mintemp", "maxtemp")]
+
+climate_correlation <- na.omit(climate_correlation)
+vif(climate_correlation)
+```
+
+All the VIF scores are less than 5. 
+
+We will now run models on each of the species.
+
+``` {r, echo=TRUE, eval=TRUE}
+climate_species <- data.frame(Masterset$Date, Masterset$Species_Name)
+names(climate_species) <- c('dates', 'species')
+```
+
+``` {r, echo=TRUE, eval=TRUE}
+# for Bungarus fasciatus
+climate_fasciatus <- subset(climate_species, species %in% c("Bungarus fasciatus"))
+climate_fasciatus <- pad(climate_fasciatus)
+climate_fasciatus$presence <- ifelse(is.na(climate_fasciatus$species), 0, 
+                                     ifelse(climate_fasciatus$species == "Bungarus fasciatus", 1, 0))
+climate_fasciatus <- subset(climate_fasciatus, select = -species)
+
+climate_fasciatus <- merge(climate_fasciatus, climate_data, by = "dates")
+climate_fasciatus <- subset(climate_fasciatus, select = -dates )
+climate_fasciatus <- na.omit(climate_fasciatus)
+# making the model
+model_fasciatus <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                       data = climate_fasciatus, family = binomial(link = "logit"))
+summary(model_fasciatus)
+res_fasciatus <- roc(presence ~ fitted(model_fasciatus), 
+                     data = climate_fasciatus)
+res_fasciatus$auc
+ggroc(res_fasciatus, legacy.axes = TRUE)
+
+# for Bungarus caeruleus
+climate_caeruleus <- subset(climate_species, species %in% c("Bungarus caeruleus"))
+climate_caeruleus <- pad(climate_caeruleus)
+climate_caeruleus$presence <- ifelse(is.na(climate_caeruleus$species), 0, 
+                                     ifelse(climate_caeruleus$species == "Bungarus caeruleus", 1, 0))
+climate_caeruleus <- subset(climate_caeruleus, select = -species)
+
+climate_caeruleus <- merge(climate_caeruleus, climate_data, by = "dates")
+climate_caeruleus <- subset(climate_caeruleus, select = -dates )
+climate_caeruleus <- na.omit(climate_caeruleus)
+# making the model
+model_caeruleus <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                       data = climate_caeruleus, family = binomial(link = "logit"))
+summary(model_caeruleus)
+res_caeruleus <- roc(presence ~ fitted(model_caeruleus), 
+                     data = climate_caeruleus)
+res_caeruleus$auc
+ggroc(res_caeruleus, legacy.axes = TRUE)
+
+# for Daboia russelii
+climate_russelii <- subset(climate_species, species %in% c("Daboia russelii"))
+climate_russelii <- pad(climate_russelii)
+climate_russelii$presence <- ifelse(is.na(climate_russelii$species), 0, 
+                                    ifelse(climate_russelii$species == "Daboia russelii", 1, 0))
+climate_russelii <- subset(climate_russelii, select = -species)
+
+climate_russelii <- merge(climate_russelii, climate_data, by = "dates")
+climate_russelii <- subset(climate_russelii, select = -dates )
+climate_russelii <- na.omit(climate_russelii)
+# making the model
+model_russelii <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                      data = climate_russelii, family = binomial(link = "logit"))
+summary(model_russelii)
+res_russelii <- roc(presence ~ fitted(model_russelii), 
+                    data = climate_russelii)
+res_russelii$auc
+ggroc(res_russelii, legacy.axes = TRUE)
+
+# for Naja kaouthia
+climate_kaouthia <- subset(climate_species, species %in% c("Naja kaouthia"))
+climate_kaouthia <- pad(climate_kaouthia)
+climate_kaouthia$presence <- ifelse(is.na(climate_kaouthia$species), 0, 
+                                    ifelse(climate_kaouthia$species == "Naja kaouthia", 1, 0))
+climate_kaouthia <- subset(climate_kaouthia, select = -species)
+
+climate_kaouthia <- merge(climate_kaouthia, climate_data, by = "dates")
+climate_kaouthia <- subset(climate_kaouthia, select = -dates )
+climate_kaouthia <- na.omit(climate_kaouthia)
+# making the model
+model_kaouthia <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                      data = climate_kaouthia, family = binomial(link = "logit"))
+summary(model_kaouthia)
+res_kaouthia <- roc(presence ~ fitted(model_kaouthia), 
+                    data = climate_kaouthia)
+res_kaouthia$auc
+ggroc(res_kaouthia, legacy.axes = TRUE)
+
+
+# for Naja naja
+
+climate_naja <- subset(climate_species, species %in% c("Naja naja"))
+climate_naja <- pad(climate_naja)
+climate_naja$presence <- ifelse(is.na(climate_naja$species), 0, 
+                                ifelse(climate_naja$species == "Naja naja", 1, 0))
+climate_naja <- subset(climate_naja, select = -species)
+
+climate_naja <- merge(climate_naja, climate_data, by = "dates")
+climate_naja <- subset(climate_naja, select = -dates )
+climate_naja <- na.omit(climate_naja)
+# making the model
+model_naja <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                  data = climate_naja, family = binomial(link = "logit"))
+summary(model_naja)
+res_naja <- roc(presence ~ fitted(model_naja), 
+                data = climate_naja)
+res_naja$auc
+ggroc(res_naja, legacy.axes = TRUE)
+
+
+# for Fowlea piscator
+climate_piscator <- subset(climate_species, species %in% c("Fowlea piscator"))
+climate_piscator <- pad(climate_piscator)
+climate_piscator$presence <- ifelse(is.na(climate_piscator$species), 0, 
+                                    ifelse(climate_piscator$species == "Fowlea piscator", 1, 0))
+climate_piscator <- subset(climate_piscator, select = -species)
+
+climate_piscator <- merge(climate_piscator, climate_data, by = "dates")
+climate_piscator <- subset(climate_piscator, select = -dates )
+climate_piscator <- na.omit(climate_piscator)
+# making the model
+model_piscator <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                      data = climate_piscator, family = binomial(link = "logit"))
+summary(model_piscator)
+res_piscator <- roc(presence ~ fitted(model_piscator), 
+                    data = climate_piscator)
+res_piscator$auc
+ggroc(res_piscator, legacy.axes = TRUE)
+
+# for Dendrelaphis tristis
+climate_tristis <- subset(climate_species, species %in% c("Dendrelaphis tristis"))
+climate_tristis <- pad(climate_tristis)
+climate_tristis$presence <- ifelse(is.na(climate_tristis$species), 0, 
+                                   ifelse(climate_tristis$species == "Dendrelaphis tristis", 1, 0))
+climate_tristis <- subset(climate_tristis, select = -species)
+
+climate_tristis <- merge(climate_tristis, climate_data, by = "dates")
+climate_tristis <- subset(climate_tristis, select = -dates )
+climate_tristis <- na.omit(climate_tristis)
+# making the model
+model_tristis <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                     data = climate_tristis, family = binomial(link = "logit"))
+summary(model_tristis)
+res_tristis <- roc(presence ~ fitted(model_tristis), 
+                   data = climate_tristis)
+res_tristis$auc
+ggroc(res_tristis, legacy.axes = TRUE)
+
+# for Ptyas mucosa
+climate_mucosa <- subset(climate_species, species %in% c("Ptyas mucosa"))
+climate_mucosa <- pad(climate_mucosa)
+climate_mucosa$presence <- ifelse(is.na(climate_mucosa$species), 0, 
+                                  ifelse(climate_mucosa$species == "Ptyas mucosa", 1, 0))
+climate_mucosa <- subset(climate_mucosa, select = -species)
+
+climate_mucosa <- merge(climate_mucosa, climate_data, by = "dates")
+climate_mucosa <- subset(climate_mucosa, select = -dates )
+climate_mucosa <- na.omit(climate_mucosa)
+# making the model
+model_mucosa <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                    data = climate_mucosa, family = binomial(link = "logit"))
+summary(model_mucosa)
+res_mucosa <- roc(presence ~ fitted(model_mucosa), 
+                  data = climate_mucosa)
+res_mucosa$auc
+ggroc(res_mucosa, legacy.axes = TRUE)
+
+# for Lycodon aulicus
+climate_aulicus <- subset(climate_species, species %in% c("Lycodon aulicus"))
+climate_aulicus <- pad(climate_aulicus)
+climate_aulicus$presence <- ifelse(is.na(climate_aulicus$species), 0, 
+                                   ifelse(climate_aulicus$species == "Lycodon aulicus", 1, 0))
+climate_aulicus <- subset(climate_aulicus, select = -species)
+
+climate_aulicus <- merge(climate_aulicus, climate_data, by = "dates")
+climate_aulicus <- subset(climate_aulicus, select = -dates )
+climate_aulicus <- na.omit(climate_aulicus)
+# making the model
+model_aulicus <- glm(presence ~ rain + rain_prev + maxtemp + mintemp, 
+                     data = climate_aulicus, family = binomial(link = "logit"))
+summary(model_aulicus)
+res_aulicus <- roc(presence ~ fitted(model_aulicus), 
+                   data = climate_aulicus)
+res_aulicus$auc
+ggroc(res_aulicus, legacy.axes = TRUE)
+```
+
+## Comparing Time Periods
+
+``` {r, echo=TRUE, eval=TRUE}
+time_effects <- data.frame(Masterset$Date, Masterset$Time, Masterset$Species_Name)
+names(time_effects) <- c('dates', 'time', 'species')
+
+# create time_periods
+time_effects$datetime <- as.POSIXct(paste(time_effects$dates, time_effects$time))
+time_effects$time <- as_hms(time_effects$datetime)
+#Define the 6 hour breaks and the time period labels
+breaks <- hour(hms("00:00:00", "05:59:59", "11:59:59", "17:59:59", "23:59:59"))
+labels  <- c("0_6", "6_12", "12_18", "18_0")
+
+# Define time periods
+time_effects$time_period <- cut(x = hour(time_effects$time), 
+                                breaks = breaks, labels = labels, 
+                                include.lowest = TRUE)
+                                
+# Select only the species and time_period columns
+time_periods_species <- time_effects %>% select(species, time_period)
+```
+
+``` {r, echo=TRUE, eval=TRUE}
+selected_species <- c( "Fowlea piscator" , "Dendrelaphis tristis" ,
+                       "Ptyas mucosa", "Lycodon aulicus", 
+                       "Bungarus fasciatus", "Bungarus caeruleus",
+                       "Naja kaouthia", "Naja naja","Daboia russelii" )
+time_periods_species <- subset(time_periods_species, species %in% selected_species)
+
+table_time_periods <- table(time_periods_species$species, time_periods_species$time_period)
+table_time_periods
+
+
+# remove the first 6 hour time period (0_6) due to the lack of calls
+table_time_periods <- table_time_periods[, -1]
+chisq.test(table_time_periods)
+
+```
