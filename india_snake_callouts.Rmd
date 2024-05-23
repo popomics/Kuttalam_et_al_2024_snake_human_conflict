@@ -13,6 +13,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+# packages and their dependencies need to be installed to knit the script
 library(dplyr)
 library(chron)
 library(padr)
@@ -24,6 +25,14 @@ library(hms)
 library(lubridate)
 library(ggplot2)
 library(ggpubr)
+```
+
+# Github repo
+
+If you want to try out any of this code, you should clone the repo. You can knit the R markdown script (`india_snake_callouts.Rmd`) in R studio to generate the `html`
+
+```bash
+git clone https://github.com/popomics/Kuttulam_et_al_2024_snake_human_conflict.git
 ```
 
 # Load the Data
