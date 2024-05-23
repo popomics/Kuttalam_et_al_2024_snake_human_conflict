@@ -8,7 +8,7 @@ output:
     theme: readable
     highlight: espresso
     toc: yes
-    keep_md: yes
+    keep_md: no
 ---
 
 ```{r setup, include=FALSE}
@@ -22,6 +22,8 @@ library(usdm)
 library(pROC)
 library(hms)
 library(lubridate)
+library(ggplot2)
+library(ggpubr)
 ```
 
 # Load the Data
@@ -30,9 +32,7 @@ library(lubridate)
 Masterset <- read.csv("./Cleaned Data_October 2022.csv",
                       header = TRUE, stringsAsFactors = FALSE)
 ```
-
 ## Transforming Variables
-
 ```{r, echo=TRUE, eval=TRUE}
 Masterset <- mutate(Masterset, Date= as.Date(Date, format= "%d/%m/%Y"))
 Masterset$Time <- chron(times = Masterset$Time)
@@ -45,11 +45,11 @@ Masterset$Species_Name <- gsub(".*\\((.*?)\\).*", "\\1", Masterset$Species_Name)
 ```
 
 # Comparing Years
-
 Here, we test whether there are significant decreases in the number of rescues year-on-year. We also test the changes in proportion of venomous and non-venomous rescues year-on-year.
 
-First, load the Date and Species_Name from the Masterset. Label the rescues as 'venomous' or 'non-venomous'.
+<br>
 
+First, load the Date and Species_Name from the Masterset. Label the rescues as 'venomous' or 'non-venomous'.
 ```{r, echo=TRUE, eval=TRUE}
 month_encounts = data.frame(Masterset$Date, Masterset$Species_Name)
 names(month_encounts) <- c('dates', 'species')
@@ -78,15 +78,14 @@ month_encounts <- mutate(month_encounts, species_type = case_when(
   species == "Lycodon jara" ~ "non-venomous"))
 ```
 
-Create a month and year column. 
+<br>
 
+Create a month and year column. 
 ```{r, echo=TRUE, eval=TRUE}
 month_encounts$month =  format(month_encounts$dates, format = "%B")
 month_encounts$year = format(month_encounts$dates, format = "%Y")
 ```
-
 Get the summary of the rescue counts. 
-
 ```{r, echo=TRUE, eval=TRUE}
 summary_month_encounts <- month_encounts %>% 
   count(species_type, month, year, sort = TRUE)
@@ -111,9 +110,7 @@ summary_month_encounts <- summary_month_encounts %>%
   arrange(month, year)
 
 ```
-
 ## Compare 2020 vs 2021 (July to December)
-
 ```{r, echo=TRUE, eval=TRUE}
 summary_month_encounts %>% 
   group_by(species_type, 
@@ -137,9 +134,7 @@ obs <- c(201,142)
 exp <- c(0.5,0.5)
 chisq.test(obs, p=exp)
 ```
-
 ## Compare 2021 vs 2022 (January to October)
-
 ```{r, echo=TRUE, eval=TRUE}
 summary_month_encounts %>% 
   group_by(species_type, 
@@ -168,6 +163,46 @@ exp <- c(0.5,0.5)
 chisq.test(obs, p=exp)
 ```
 
+<br>
+
+Plotting the average number of rescues each month:
+
+**Figure 3 in Paper**
+
+```{r, echo=TRUE, eval=TRUE}
+fig3 <- summary_month_encounts %>% group_by(month, species_type) %>% 
+  summarise(average  = mean(n, na.rm = TRUE), sd = sd(n, na.rm = TRUE))
+fig3 <- fig3 %>% mutate(across(c('average'), round, 2)) %>%
+  mutate(across(c('sd'), round, 2))
+
+# create plot
+ggplot(fig3, aes(x = factor(month, levels = c('January', 'February', 'March', 
+                                          'April', 'May', 'June', 'July', 'August', 
+                                          'September', 'October', 'November', 
+                                          'December')), 
+                            y = average, fill = species_type, width =.75)) + 
+  geom_col(position = position_dodge(0.8), width = 0.5) + 
+  scale_y_continuous(name="Average Number of Encounters", 
+                     limits=c(0, 30), breaks = seq(0, 30, 2)) + 
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "bold", angle = 90), 
+        legend.position = c(.10, .85), 
+        legend.box.background = element_rect(color="grey", size=0.75), 
+        legend.key.size = unit(2, 'mm')
+        ) +
+  scale_fill_manual(values = c("#6A6F70", "#33CCCC", "#EA5858"), 
+                    labels= c('All Snakes','Non-Venomous', 'Venomous'), name = "Species Type") +
+  geom_text(aes(label = average), colour = "black", size = 2.5, vjust = -0.4, 
+            position = position_dodge(0.8), fontface = "bold") +
+  xlab('Month') 
+
+```
+
+
+
 # Site Use Comparison
  
 ## Individual Sites
@@ -185,9 +220,10 @@ which(VenomvsNonVenom$Species == "")
 VenomvsNonVenom <- VenomvsNonVenom[!VenomvsNonVenom$Site=="",]
 ```
 
+<br>
 Add column for snake type ( 1 = venomous, 0 = non-venomous)
-
 ```{r, echo=TRUE, eval=TRUE}
+
 VenomvsNonVenom <- mutate(VenomvsNonVenom, SnakeType = case_when(
   Species == "Bungarus fasciatus" ~ "1",
   Species == "Bungarus caeruleus" ~ "1",
@@ -213,8 +249,8 @@ VenomvsNonVenom <- mutate(VenomvsNonVenom, SnakeType = case_when(
 
 ```
 
+<br>
 Check whether there are any sites with low rescue counts
-
 ```{r, echo=TRUE, eval=TRUE}
 VenomvsNonVenom %>% count(Site, SnakeType, sort = TRUE)
 ```
@@ -224,7 +260,6 @@ Combine the following sites which have low counts and are very similar niches:
 -   Well + Pond + Fishing Net + Fishing Traps + Canal = Water Body
 -   Rice Field + Groundnut Field + Fodder Field + Bamboo Orchard = Agricultural Field
 -   Bird Cage + Chicken/ Duck Pen + Poultry Farm = Bird Enclosure
-
 ```{r, echo=TRUE, eval=TRUE}
 VenomvsNonVenom <- VenomvsNonVenom %>%
   mutate(Site = case_when(
@@ -235,8 +270,8 @@ VenomvsNonVenom <- VenomvsNonVenom %>%
   ))
 ```
 
+<br>
 Run Chi-Squared Tests at each Site
-
 ```{r, echo=TRUE, eval=TRUE}
 site_counts <- VenomvsNonVenom %>% count(Site, SnakeType, sort = FALSE)
 ```
@@ -298,10 +333,63 @@ exp <- c(0.5,0.5)
 chisq.test(obs, p=exp)
 ```
 
+<br>
+Visualizing the data: 
+
+**Figure 2 in Paper**
+```{r, echo=TRUE, eval=TRUE}
+# group the counts and percetange them for fig2
+fig2 <- VenomvsNonVenom %>% count(Site, SnakeType, sort = TRUE)
+fig2 <- fig2 %>% group_by(SnakeType) %>% mutate(perc = ( n / sum(n)) * 100)
+fig2 <- fig2 %>% mutate(across(c('perc'), round, 2))
+# change the order sites so it looks as Inside and Outside Grouped
+fig2$Site <- factor(fig2$Site, levels=c('Agricultural Field','Backyard/ Front Garden', 'Water Body', 
+                                        'Bathroom', 'Bedroom', 'Kitchen', 'Courtyard', 'Shop', 
+                                        'Store Room', 'Bird Enclosure', 'Cow Shed'))
+# change 0 ,1  to non-venomous and venomous
+fig2$SnakeType <- as.factor(fig2$SnakeType)
+levels(fig2$SnakeType) <- list(fig2$SnakeType, "Non-Venomous" = "0", 
+                                "Venomous" = "1")
+# Plot fig2
+ggplot(fig2, aes(x = SnakeType,y = perc, fill = Site, colour = SnakeType,
+                 order = Site)) + 
+  geom_col(size=1) +
+  scale_color_manual(values = c("blue", "red")) +
+  scale_x_discrete(limits = c(" ", "Non-Venomous","Venomous")) +
+  scale_fill_brewer(palette = "Set3") +
+  coord_polar("y") +
+  theme_void()
+```
+
+**Figure 4 in Paper**
+
+```{r, echo=TRUE, eval=TRUE}
+fig4 <- VenomvsNonVenom %>% count(Site, SnakeType, sort = TRUE)
+
+#Create the plot
+ggplot(fig4, aes(x = Site, y = n, fill = SnakeType)) + 
+  geom_col(position = "dodge") + 
+  scale_y_continuous(name="Number of Encounters", 
+                     limits=c(0, 140), breaks = seq(0, 140, 10)) + 
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "bold", angle = 90, 
+                                   colour = c("black", "red", "red", "black", 
+                                              "black", "red", "black", "red", 
+                                              "black", "red", "red")), 
+        legend.position = c(.90, .80), 
+        legend.box.background = element_rect(color="grey", size=0.75)) +
+  scale_fill_manual(labels= c('Non-Venomous', 'Venomous'), 
+                    values = c("#33CCCC", "#EA5858"), name = "Species Type") +
+  geom_text(aes(label = n), colour = "black", size = 3, vjust = -0.3, 
+            position = position_dodge(0.9))
+```
+
+
 ## Outside vs Inside Sites
-
 Here, we group the sites as outside or inside and then run a chi-squared test. 
-
 ```{r, echo=TRUE, eval=TRUE}
 OutvsIn = data.frame(Masterset$Species_Name, Masterset$Site_Type)
 names(OutvsIn) <- c('Species', 'Site')
@@ -360,7 +448,6 @@ OutvsIn <- mutate(OutvsIn, Location = case_when(
 ```
 
 Run the Chi-Squared Test
-
 ```{r, echo=TRUE, eval=TRUE}
 
 # Create the table on which the chi-squared will be run
@@ -371,10 +458,37 @@ chisq.test(table(OutvsIn$SnakeType, OutvsIn$Location), correct = FALSE)
 
 ```
 
+<br>
+Visualizing this: 
+```{r, echo=TRUE, eval=TRUE}
+plot1 <- OutvsIn %>% count(Location, SnakeType, sort = TRUE)
+# create percentages for each category
+
+
+plot1 <- plot1 %>% group_by(SnakeType) %>% 
+  mutate(percent = round(n /sum(n)*100, 2))
+plot1 <- plot1 %>% group_by(SnakeType) %>% 
+  mutate(percent_labels = scales::percent(n / sum(n), accuracy = .1, trim = FALSE))
+
+# create the plot
+ggplot(plot1, aes(fill=Location, x= SnakeType, y=percent, label = percent_labels)) + 
+  geom_bar(position = "stack", stat = "identity")  +
+  scale_y_continuous(name="Percentage of Encounters") + 
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "bold", angle = 0, colour = 
+                                     c("#33CCCC", "#EA5858"))) +
+  scale_fill_manual(labels= c('Inside', 'Outside'), 
+                    values = c("#FFC000", "#70AD47"), name = "Location") +
+  scale_x_discrete(name = "Species Type", labels = c("Non-Venomous", "Venomous")) +
+  geom_text(size = 5, position = position_stack(vjust = 0.5), fontface = "bold")
+```
+
 # Loading Climate Data
 
 Load the data from the csv file named "IMD_data.csv". 
-
 ```{r, echo=TRUE, eval=TRUE}
 climate_data <- read.csv("./IMD_data.csv", header = TRUE, 
                          stringsAsFactors = FALSE)
@@ -389,8 +503,8 @@ names(climate_data) <- c('dates', 'max_temp', 'min_temp', 'rain')
 climate_data <- pad(climate_data)
 ```
 
+<br>
 Create single dataframe for each variable. 
-
 ```{r, echo=TRUE, eval=TRUE}
 
 # maxtemp
@@ -405,9 +519,7 @@ names(rain) <- c('dates', 'rain')
 ```
 
 # Effect Of Rain
-
 ## Effect on Location and Species Type
-
 ```{r, echo=TRUE, eval=TRUE}
 rain_sites = data.frame(Masterset$Date, Masterset$Species_Name, Masterset$Site_Type)
 names(rain_sites) <- c('dates', 'species', 'site')
@@ -458,8 +570,8 @@ rain_sites <- mutate(rain_sites, site_type = case_when(
   site == "Well" ~ "Outside"))
 ```
 
+<br>
 Add the rain data. 
-
 ```{r, echo=TRUE, eval=TRUE}
 rain_sites <- merge(rain_sites, rain, by = "dates")
 #remove rows with NA's 
@@ -475,9 +587,7 @@ rain_sites$day_type <- as.factor(rain_sites$day_type)
 
 rain_sites %>% count(species_type, site_type, day_type)
 ```
-
 Run the Chi-Squared Tests. 
-
 ```{r, echo=TRUE, eval=TRUE}
 # venomous
 chisq.test(as.table(rbind(c(130,123), c(43,44))), correct = FALSE)
@@ -486,8 +596,39 @@ chisq.test(as.table(rbind(c(130,123), c(43,44))), correct = FALSE)
 chisq.test(as.table(rbind(c(70,41), c(19,14))), correct = FALSE)
 ```
 
-## Effect of Day Type Combinations
+<br>
+Visualizing this in a plot: 
 
+```{r, echo=TRUE, eval=TRUE}
+plot2 <- rain_sites %>% count(species_type, site_type, day_type, sort = TRUE)
+
+# create percentages for each category
+plot2 <- plot2 %>% group_by(day_type, species_type) %>%
+  mutate(percent = round(n /sum(n)*100,2))
+plot2 <- plot2 %>% group_by(day_type, species_type) %>%
+  mutate(percent_labels = scales::percent(n / sum(n), accuracy = .1, trim = FALSE))
+
+# create plot1 plot
+ggplot(plot2, aes(fill = site_type, x = species_type, y=percent, label=percent_labels)) + 
+  geom_bar(position = "stack", stat = "identity") + 
+  scale_y_continuous(name="Percentage of Encounters") +
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "bold", angle = 0, 
+                                   colour = c("#33CCCC", "#EA5858")), 
+        axis.text = element_text(size = 10)) +
+  geom_text(size = 5, fontface = "bold", position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(labels= c('Inside', 'Outside'), 
+                    values = c("#FFC000", "#70AD47"), name = "Location") +
+  scale_x_discrete(name = "Species Type", labels = c("Non-Venomous", "Venomous")) +
+  facet_grid(. ~day_type)
+
+```
+
+
+## Effect of Day Type Combinations
 ```{r, echo=TRUE, eval=TRUE}
 daytype = data.frame(Masterset$Date, Masterset$Species_Name)
 names(daytype) <- c('dates' , 'species')
@@ -524,8 +665,8 @@ daytype <- daytype[!duplicated(daytype[c('dates')]),]
 table( daytype$day_diff, daytype$snake_encounter)
 ```
 
+<br>
 Run the chi-squared tests for each of combination of day_diff. 
-
 ```{r, echo=TRUE, eval=TRUE}
 # Dry:Dry vs Dry:Rain
 prev_day_compare <- matrix(c(293,183,56,23), ncol=2, byrow = TRUE)
@@ -551,9 +692,60 @@ chisq.test(prev_day_compare, correct = F)
 prev_day_compare <- matrix(c(44,36,57,48), ncol=2, byrow = TRUE)
 chisq.test(prev_day_compare, correct = F)
 ```
+Visualizing this in a plot: 
 
-We will also test to see whether there is an association between the daytype combination and the locations of the rescue.
+**Figure 5 in Paper**
 
+```{r, echo=TRUE, eval=TRUE}
+fig5 <- daytype %>% count(snake_encounter, day_diff, sort = TRUE)
+# remove NA's 
+fig5 <- na.omit(fig5)
+
+# create percentages for each category
+fig5 <- fig5 %>% group_by(day_diff) %>%
+  mutate(percent = round(n / sum(n)*100, 2))
+fig5 <- fig5 %>% group_by(day_diff) %>% 
+  mutate(percent_labels = scales::percent(n / sum(n), accuracy = .1, trim = FALSE))
+
+# data table
+table_day <-  data.frame(
+  day_diff = c("Dry:Dry", "Dry:Rain", "Rain:Dry", "Rain:Rain"),
+  No = c(293, 56, 44, 57),
+  Yes = c(183, 23, 36, 48))
+# transpose the table
+table_day <- t(table_day[, -1])
+colnames(table_day) <- c("Dry:Dry", "Dry:Rain", "Rain:Dry", "Rain:Rain")
+# Create a stacked chart using ggplot
+plot <- ggplot(fig5, aes(fill=snake_encounter, x= day_diff, y=percent, label = percent_labels)) + 
+  geom_bar(position = "stack", stat = "identity") +
+  scale_y_continuous(name="Percentage of Encounters") + 
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "bold", angle = 0), 
+        axis.text = element_text(size = 10), 
+        legend.position = "none") + 
+  scale_fill_manual(labels= c('No', 'Yes'), values = c("#33CCCC", "#EA5858"), 
+                    name = "Rescue Encounter") +
+  scale_x_discrete(name = "Day Type") +
+  geom_text(size = 5, position = position_stack(vjust = 0.5), fontface = "bold") 
+# create text table with the data table
+table <- ggtexttable(table_day, theme = ttheme("light", 
+                                               tbody.style = tbody_style(fill = c("#33CCCC", "#EA5858"))))
+
+```
+
+```{r, echo=TRUE, eval=TRUE}
+# merge the table and plot
+ggarrange(plot, table, ncol = 1, heights = c(3,1))
+
+```
+
+<br>
+
+<br>
+We will also test to see whether there is an association between the daytype combination and the locations of the rescue. 
 ```{r, echo=TRUE, eval=TRUE}
 daytype_location = data.frame(Masterset$Date, Masterset$Site_Type)
 names(daytype_location) <- c('dates', 'site')
@@ -605,11 +797,10 @@ chisq.test(table(daytype_location$site_type, daytype_location$day_diff))
 ```
 
 # Most Rescued Species
-
 ## Comparing Climate Effects
 
-### Rain
 
+### Rain
 ```{r, echo=TRUE, eval=TRUE}
 rain_select= data.frame(Masterset$Date, Masterset$Species_Name)
 names(rain_select) <-  c('dates', 'species')
@@ -625,7 +816,6 @@ rain_select <- rain_select[, !names(rain_select) %in% c("dates")]
 ```
 
 Check the assumptions for a one-way ANOVA.
-
 ```{r, echo=TRUE, eval=TRUE}
 ### create the model
 model_rain <- aov(rain~species, data = rain_select)
@@ -642,8 +832,33 @@ Assumptions have been violated.
 kruskal_test(rain~species, data = rain_select)
 ```
 
-### Minimum Temperature
+``` {r, echo=TRUE, eval=TRUE}
+# rain (A)
+rain_plot <- ggplot(rain_select, aes(x=factor(species, level=c('Bungarus fasciatus', 
+                                                            'Bungarus caeruleus',
+                                                            'Daboia russelii',
+                                                            'Naja kaouthia',
+                                                            'Naja naja', 
+                                                            'Fowlea piscator',
+                                                            'Dendrelaphis tristis',
+                                                            'Ptyas mucosa',
+                                                            'Lycodon aulicus')),
+                                     y=rain, fill=species)) + geom_violin() + 
+  labs(x = "Species", y= "Rain (mm)") +
+  geom_point(position = position_jitter(seed = 1, width = 0.2), size = 1) + 
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "italic", angle = 90), legend.position = "none") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank() ) 
+rain_plot
 
+```
+
+### Minimum Temperature
 ```{r, echo=TRUE, eval=TRUE}
 mintemp_select= data.frame(Masterset$Date, Masterset$Species_Name)
 names(mintemp_select) <-  c('dates', 'species')
@@ -659,7 +874,6 @@ mintemp_select <- mintemp_select[, !names(mintemp_select) %in% c("dates")]
 ```
 
 Check the assumptions for a one-way ANOVA.
-
 ```{r, echo=TRUE, eval=TRUE}
 ### create the model
 model_mintemp <- aov(mintemp~species, data = mintemp_select)
@@ -670,9 +884,7 @@ leveneTest(model_mintemp)
 ### independence
 durbinWatsonTest(model_mintemp)
 ```
-
 Assumptions have been violated. 
-
 ```{r, echo=TRUE, eval=TRUE}
 # Run a Kruskal Wallis Test
 kruskal_test(mintemp~species, data = mintemp_select)
@@ -682,8 +894,35 @@ pwc_mintemp <- dunn_test(mintemp~species, data = mintemp_select)
 print(pwc_mintemp, n=36)
 ```
 
-### Maximum Temperature
+```{r, echo=TRUE, eval=TRUE}
+# mintemp (B)
+pwc_mintemp <- pwc_mintemp %>% add_xy_position(x = "species")
+mintemp_plot <- ggplot(mintemp_select, aes(x= factor(mintemp_select$species, level=c('Bungarus fasciatus', 
+                                                                   'Bungarus caeruleus',
+                                                                   'Daboia russelii',
+                                                                   'Naja kaouthia',
+                                                                   'Naja naja', 
+                                                                   'Fowlea piscator',
+                                                                   'Dendrelaphis tristis',
+                                                                   'Ptyas mucosa',
+                                                                   'Lycodon aulicus')),
+                                           y= mintemp)) + geom_violin(aes(fill= species)) +
+  labs(x="Species", y="Temperature") +
+  geom_point(position = position_jitter(seed = 1, width = 0.2), size = 1) +
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "italic", angle = 90), legend.position = "none") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank() )  + 
+  stat_pvalue_manual(pwc_mintemp, hide.ns = TRUE)
+mintemp_plot
 
+```
+
+### Maximum Temperature
 ```{r, echo=TRUE, eval=TRUE}
 maxtemp_select= data.frame(Masterset$Date, Masterset$Species_Name)
 names(maxtemp_select) <-  c('dates', 'species')
@@ -699,7 +938,6 @@ maxtemp_select <- maxtemp_select[, !names(maxtemp_select) %in% c("dates")]
 ```
 
 Check the assumptions for a one-way ANOVA.
-
 ```{r, echo=TRUE, eval=TRUE}
 ### create the model
 model_maxtemp <- aov(maxtemp~species, data = maxtemp_select)
@@ -710,16 +948,40 @@ leveneTest(model_maxtemp)
 ### independence
 durbinWatsonTest(model_maxtemp)
 ```
-
 Assumptions have been violated. 
-
 ```{r, echo=TRUE, eval=TRUE}
 # Run a Kruskal Wallis Test
 kruskal_test(maxtemp~species, data = maxtemp_select)
+
+```
+
+```{r, echo=TRUE, eval=TRUE}
+# maxtemp (C)
+
+maxtemp_plot <- ggplot(maxtemp_select, aes(x= factor(maxtemp_select$species, level=c('Bungarus fasciatus', 
+                                                                                  'Bungarus caeruleus',
+                                                                                  'Daboia russelii',
+                                                                                  'Naja kaouthia',
+                                                                                  'Naja naja', 
+                                                                                  'Fowlea piscator',
+                                                                                  'Dendrelaphis tristis',
+                                                                                  'Ptyas mucosa',
+                                                                                  'Lycodon aulicus')),
+                                           y= maxtemp)) + geom_violin(aes(fill= species)) +
+  labs(x="Species", y="Temperature") +
+  geom_point(position = position_jitter(seed = 1, width = 0.2), size = 1) +
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "italic", angle = 90), legend.position = "none") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank() )
+maxtemp_plot
 ```
 
 ### Temperature Range
-
 ```{r, echo=TRUE, eval=TRUE}
 temprange_select= data.frame(Masterset$Date, Masterset$Species_Name)
 names(temprange_select) <-  c('dates', 'species')
@@ -729,8 +991,8 @@ temprange_select <- temprange_select[temprange_select$species %in% c( "Fowlea pi
                                                              "Naja kaouthia", "Naja naja","Daboia russelii" ), ]
 ```
 
+<br>
 First, create the temperature range dataframe. 
-
 ```{r, echo=TRUE, eval=TRUE}
 # Creating temprange
 temprange <- merge(mintemp, maxtemp, by = "dates")
@@ -744,7 +1006,6 @@ temprange_select <- temprange_select[, !names(temprange_select) %in% c("dates")]
 ```
 
 Check the assumptions for a one-way ANOVA.
-
 ```{r, echo=TRUE, eval=TRUE}
 ### create the model
 model_temprange <- aov(temprange~species, data = temprange_select)
@@ -755,9 +1016,7 @@ leveneTest(model_temprange)
 ### independence
 durbinWatsonTest(model_temprange)
 ```
-
 Assumptions have not been violated. 
-
 ```{r, echo=TRUE, eval=TRUE}
 # Run a Kruskal Wallis Test
 anova_test(temprange~species, data = temprange_select)
@@ -766,8 +1025,59 @@ print(pwc_temprange, n=36, width = Inf)
 
 ```
 
-## Binary Logistic Regression Models
+```{r, echo=TRUE, eval=TRUE}
+#temprange (D)
+pwc_temprange <- pwc_temprange %>% add_xy_position(x = "species")
 
+temprange_plot <- ggplot(temprange_select, aes(x= factor(temprange_select$species, level=c('Bungarus fasciatus', 
+                                                                                  'Bungarus caeruleus',
+                                                                                  'Daboia russelii',
+                                                                                  'Naja kaouthia',
+                                                                                  'Naja naja', 
+                                                                                  'Fowlea piscator',
+                                                                                  'Dendrelaphis tristis',
+                                                                                  'Ptyas mucosa',
+                                                                                  'Lycodon aulicus')),
+                                           y= temprange)) + geom_violin(aes(fill= species)) +
+  labs(x="Species", y="Temperature") +
+  geom_point(position = position_jitter(seed = 1, width = 0.2), size = 1) +
+  theme(panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_line(colour = "grey", linetype = 1), 
+        axis.text.x = element_text(face = "bold.italic", 
+                                   angle = 90, size = 15), 
+        legend.position = "none") +
+  scale_x_discrete(labels = c("Bungarus fasciatus" = "B. fasciatus", 
+                              "Bungarus caeruleus" = "B. caeruleus",
+                              "Daboia russelii" = "D. russelii",
+                              "Naja kaouthia" = "N. kaouthia",
+                              "Naja naja" = "N. naja",
+                              "Fowlea piscator" = "F. piscator",
+                              "Dendrelaphis tristis" = "D. tristis",
+                              "Ptyas mucosa" = "P. mucosa",
+                              "Lycodon aulicus" = "L. aulicus")) +
+  stat_pvalue_manual(pwc_temprange, hide.ns = TRUE)
+temprange_plot
+```
+
+<br>
+Visualizing these Results: 
+
+**Figure 6 in Paper**
+
+
+```{r, fig.width=8, fig.height=8}
+# merge fig5
+
+ggarrange(rain_plot, mintemp_plot, maxtemp_plot, 
+          temprange_plot + rremove("xlab"), ncol = 1, 
+          heights = c(15,15,15,25), labels = "AUTO")
+
+```
+
+
+## Binary Logistic Regression Models
 ``` {r, echo=TRUE, eval=TRUE}
 # make climate data
 climate_data <- rain
@@ -777,8 +1087,8 @@ climate_data <- merge(climate_data, maxtemp, by = "dates")
 climate_data <- pad(climate_data)
 ```
 
+<br>
 Test whether the climate variables are collinear. 
-
 ``` {r, echo=TRUE, eval=TRUE}
 # Correlation Matrix
 climate_correlation <- climate_data[, c("rain", "rain_prev", 
@@ -790,8 +1100,8 @@ vif(climate_correlation)
 
 All the VIF scores are less than 5. 
 
+<br>
 We will now run models on each of the species.
-
 ``` {r, echo=TRUE, eval=TRUE}
 climate_species <- data.frame(Masterset$Date, Masterset$Species_Name)
 names(climate_species) <- c('dates', 'species')
@@ -974,7 +1284,6 @@ ggroc(res_aulicus, legacy.axes = TRUE)
 ```
 
 ## Comparing Time Periods
-
 ``` {r, echo=TRUE, eval=TRUE}
 time_effects <- data.frame(Masterset$Date, Masterset$Time, Masterset$Species_Name)
 names(time_effects) <- c('dates', 'time', 'species')
