@@ -32,7 +32,7 @@ library(ggpubr)
 If you want to try out any of this code, you should clone the repo. You can knit the R markdown script (`india_snake_callouts.Rmd`) in R studio to generate the `html`
 
 ```bash
-git clone https://github.com/popomics/Kuttulam_et_al_2024_snake_human_conflict.git
+git clone https://github.com/popomics/Kuttalam_et_al_2024_snake_human_conflict.git
 ```
 
 # Load the Data
